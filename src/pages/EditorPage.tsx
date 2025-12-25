@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Menu, History, Pencil, Check, X, Plus, FolderOpen, Home, Save, Download, Image, Code } from 'lucide-react'
+import { Menu, History, Pencil, Check, X, Plus, FolderOpen, Home, Save, Download, Image, Code, FileText } from 'lucide-react'
 import { Button, Input, Loading } from '@/components/ui'
 import { ChatPanel } from '@/features/chat/ChatPanel'
 import { CanvasArea, type CanvasAreaRef } from '@/features/editor/CanvasArea'
@@ -276,6 +276,10 @@ export function EditorPage() {
                 <DropdownMenuRadioItem className='pl-2' value="png" onClick={() => canvasRef.current?.exportAsPng()}>
                   <Image className="mr-2 h-4 w-4" />
                   导出为 PNG
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem className='pl-2' value="source" onClick={() => canvasRef.current?.exportAsSource()}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  导出原文件
                 </DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>

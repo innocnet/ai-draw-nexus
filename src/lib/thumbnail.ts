@@ -107,37 +107,37 @@ const DRAWIO_EXPORT_URL = import.meta.env.VITE_DRAWIO_EXPORT_URL || 'https://con
 export async function generateDrawioThumbnail(xmlContent: string): Promise<string> {
   if (!xmlContent.trim()) return ''
 
-  try {
-    // Use Draw.io's official export service
-    const response = await fetch(DRAWIO_EXPORT_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        xml: xmlContent,
-        format: 'png',
-        scale: '1',
-        bg: '#ffffff',
-      }),
-    })
+  // try {
+  //   // Use Draw.io's official export service
+  //   const response = await fetch(DRAWIO_EXPORT_URL, {
+  //     method: 'POST',
+  //     headers: {
+  //       'Content-Type': 'application/x-www-form-urlencoded',
+  //     },
+  //     body: new URLSearchParams({
+  //       xml: xmlContent,
+  //       format: 'png',
+  //       scale: '1',
+  //       bg: '#ffffff',
+  //     }),
+  //   })
 
-    if (!response.ok) {
-      console.warn('Draw.io export service failed, falling back to simple renderer')
-      return generateDrawioThumbnailFallback(xmlContent)
-    }
+  //   if (!response.ok) {
+  //     console.warn('Draw.io export service failed, falling back to simple renderer')
+  //     return generateDrawioThumbnailFallback(xmlContent)
+  //   }
 
-    const blob = await response.blob()
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onloadend = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
-    })
-  } catch (error) {
-    console.warn('Draw.io export failed, using fallback:', error)
-    return generateDrawioThumbnailFallback(xmlContent)
-  }
+  //   const blob = await response.blob()
+  //   return new Promise((resolve, reject) => {
+  //     const reader = new FileReader()
+  //     reader.onloadend = () => resolve(reader.result as string)
+  //     reader.onerror = reject
+  //     reader.readAsDataURL(blob)
+  //   })
+  // } catch (error) {
+  //   console.warn('Draw.io export failed, using fallback:', error)
+  // }
+  return generateDrawioThumbnailFallback(xmlContent)
 }
 
 /**

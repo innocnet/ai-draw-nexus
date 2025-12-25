@@ -2,9 +2,6 @@ name = "ai-diagram-hub-worker"
 main = "src/index.ts"
 compatibility_date = "2024-09-25"
 
-[assets]
-directory = "./dist"
-
 # All environment variables must be set via wrangler secret:
 # wrangler secret put AI_PROVIDER
 # wrangler secret put AI_BASE_URL

@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, ImagePlus, FileText, User, Bot, X, MessageSquarePlus, Loader2, CheckCircle2 } from 'lucide-react'
+import { Send, ImagePlus, FileText, User, Bot, X, MessageSquarePlus, Loader2, CheckCircle2, Link,MoveRight } from 'lucide-react'
 import { Button, Loading } from '@/components/ui'
 import { useChatStore } from '@/stores/chatStore'
 import { useEditorStore, selectIsEmpty } from '@/stores/editorStore'
 import { useAIGenerate } from '@/hooks/useAIGenerate'
 import { useToast } from '@/hooks/useToast'
+import { aiService } from '@/services/aiService'
 import {
   validateImageFile,
   validateDocumentFile,
@@ -14,17 +15,20 @@ import {
   SUPPORTED_IMAGE_TYPES,
   SUPPORTED_DOCUMENT_EXTENSIONS,
 } from '@/lib/fileUtils'
-import type { Attachment, ImageAttachment, DocumentAttachment } from '@/types'
+import type { Attachment, ImageAttachment, DocumentAttachment, UrlAttachment } from '@/types'
 
 export function ChatPanel() {
   const [inputValue, setInputValue] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [isProcessingFile, setIsProcessingFile] = useState(false)
+  const [showUrlInput, setShowUrlInput] = useState(false)
+  const [urlInputValue, setUrlInputValue] = useState('')
+  const [isParsingUrl, setIsParsingUrl] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const hasHandledInitialPrompt = useRef(false)
 
-  const { messages, isStreaming, initialPrompt, clearInitialPrompt, clearMessages } = useChatStore()
+  const { messages, isStreaming, initialPrompt, initialAttachments, clearInitialPrompt, clearMessages } = useChatStore()
   const isCanvasEmpty = useEditorStore(selectIsEmpty)
   const { generate } = useAIGenerate()
   const { error: showError } = useToast()
@@ -38,10 +42,11 @@ export function ChatPanel() {
   useEffect(() => {
     if (initialPrompt && !hasHandledInitialPrompt.current) {
       hasHandledInitialPrompt.current = true
+      const attachmentsToSend = initialAttachments ?? undefined
       clearInitialPrompt()
-      handleSend(initialPrompt)
+      handleSend(initialPrompt, attachmentsToSend)
     }
-  }, [initialPrompt])
+  }, [initialPrompt, initialAttachments])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -111,11 +116,37 @@ export function ChatPanel() {
     setAttachments((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleSend = async (text?: string) => {
-    const message = text || inputValue.trim()
-    if ((!message && attachments.length === 0) || isStreaming) return
+  const handleUrlSubmit = async () => {
+    const url = urlInputValue.trim()
+    if (!url) return
 
-    const currentAttachments = attachments.length > 0 ? [...attachments] : undefined
+    setIsParsingUrl(true)
+    try {
+      const result = await aiService.parseUrl(url)
+      if (result.data) {
+        const urlAttachment: UrlAttachment = {
+          type: 'url',
+          content: result.data.content,
+          url: result.data.url,
+          title: result.data.title,
+        }
+        setAttachments((prev) => [...prev, urlAttachment])
+        setUrlInputValue('')
+        setShowUrlInput(false)
+      }
+    } catch (err) {
+      showError(err instanceof Error ? err.message : '链接解析失败')
+      console.error(err)
+    } finally {
+      setIsParsingUrl(false)
+    }
+  }
+
+  const handleSend = async (text?: string, initialAtts?: Attachment[]) => {
+    const message = text || inputValue.trim()
+    if ((!message && attachments.length === 0 && !initialAtts?.length) || isStreaming) return
+
+    const currentAttachments = initialAtts ?? (attachments.length > 0 ? [...attachments] : undefined)
     setInputValue('')
     setAttachments([])
     await generate(message, isCanvasEmpty, currentAttachments)
@@ -150,6 +181,9 @@ export function ChatPanel() {
       <div className="flex items-center justify-between border-b border-border px-4 py-1">
         <div>
           <h2 className="font-medium text-primary">AI 助手</h2>
+          <p className="text-xs text-muted">
+            {isCanvasEmpty ? '新建图表' : '基于当前图表修改'}
+          </p>
         </div>
         <Button
           variant="ghost"
@@ -213,6 +247,11 @@ export function ChatPanel() {
                             alt={att.fileName}
                             className="max-h-20 max-w-20 object-cover border border-surface/30"
                           />
+                        ) : att.type === 'url' ? (
+                          <span className="flex items-center gap-1">
+                            <Link className="h-3 w-3" />
+                            {att.title}
+                          </span>
                         ) : (
                           <span className="flex items-center gap-1">
                             <FileText className="h-3 w-3" />
@@ -261,6 +300,11 @@ export function ChatPanel() {
                     alt={att.fileName}
                     className="h-8 w-8 object-cover"
                   />
+                ) : att.type === 'url' ? (
+                  <>
+                    <Link className="h-3 w-3" />
+                    <span className="max-w-24 truncate">{att.title}</span>
+                  </>
                 ) : (
                   <>
                     <FileText className="h-3 w-3" />
@@ -295,6 +339,50 @@ export function ChatPanel() {
             style={{ minHeight: '120px', maxHeight: '200px' }}
           />
 
+          {/* URL Input - 行内输入框 */}
+          {showUrlInput && (
+            <div className="absolute left-0 right-0 bottom-40 flex items-center gap-2 z-10 bg-background p-2 rounded border border-border shadow-md">
+              <input
+                type="url"
+                placeholder="输入网址链接..."
+                value={urlInputValue}
+                onChange={(e) => setUrlInputValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleUrlSubmit()
+                  } else if (e.key === 'Escape') {
+                    setShowUrlInput(false)
+                    setUrlInputValue('')
+                  }
+                }}
+                disabled={isParsingUrl}
+                className="flex-1 border border-border rounded px-2 py-1 text-sm bg-surface outline-none focus:border-primary disabled:opacity-50"
+                autoFocus
+              />
+              <Button
+                size="sm"
+                onClick={handleUrlSubmit}
+                disabled={!urlInputValue.trim() || isParsingUrl}
+                className="h-7"
+              >
+                <MoveRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowUrlInput(false)
+                  setUrlInputValue('')
+                }}
+                disabled={isParsingUrl}
+                className="h-7"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+
           {/* Bottom toolbar inside input */}
           <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
             <div className="flex gap-1">
@@ -318,10 +406,26 @@ export function ChatPanel() {
               >
                 <FileText className="h-4 w-4" />
               </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                title="添加网址链接"
+                onClick={() => setShowUrlInput(!showUrlInput)}
+                disabled={isStreaming || isProcessingFile || isParsingUrl}
+                className="h-8 w-8"
+              >
+                <Link className="h-4 w-4" />
+              </Button>
               {isProcessingFile && (
                 <span className="flex items-center text-xs text-muted ml-2">
                   <Loading size="sm" className="mr-1" />
                   处理中...
+                </span>
+              )}
+              {isParsingUrl && (
+                <span className="flex items-center text-xs text-muted ml-2">
+                  <Loading size="sm" className="mr-1" />
+                  解析链接中...
                 </span>
               )}
             </div>

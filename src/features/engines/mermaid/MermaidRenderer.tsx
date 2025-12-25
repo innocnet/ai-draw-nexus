@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react'
 import mermaid from 'mermaid'
 import elkLayouts from '@mermaid-js/layout-elk'
+import tidyTreeLayouts from '@mermaid-js/layout-tidy-tree'
 import Editor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
@@ -30,6 +31,7 @@ import {
   ArrowUp,
   LayoutGrid,
   GitBranch,
+  Network,
   Code,
   X,
   Copy,
@@ -46,12 +48,13 @@ interface MermaidRendererProps {
 export interface MermaidRendererRef {
   exportAsSvg: () => void
   exportAsPng: () => void
+  exportAsSource: () => void
   showSourceCode: () => void
   hideSourceCode: () => void
   toggleSourceCode: () => void
 }
 
-type LayoutEngine = 'dagre' | 'elk'
+type LayoutEngine = 'dagre' | 'elk' | 'tidy-tree'
 type Direction = 'TB' | 'BT' | 'LR' | 'RL'
 
 const DIRECTION_LABELS: Record<Direction, string> = {
@@ -72,12 +75,21 @@ const MIN_SCALE = 0.1
 const MAX_SCALE = 5
 const SCALE_STEP = 0.1
 
-// Register ELK layout loaders once
+// Register layout loaders once
 let elkRegistered = false
+let tidyTreeRegistered = false
+
 async function registerElkLayouts() {
   if (!elkRegistered) {
     mermaid.registerLayoutLoaders(elkLayouts)
     elkRegistered = true
+  }
+}
+
+async function registerTidyTreeLayouts() {
+  if (!tidyTreeRegistered) {
+    mermaid.registerLayoutLoaders(tidyTreeLayouts)
+    tidyTreeRegistered = true
   }
 }
 
@@ -181,10 +193,11 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
     // Merge configs: preserve user's theme settings, add layout if needed
     const mergedConfig: Record<string, unknown> = { ...existingConfig }
+    mergedConfig.layout = layoutEngine
 
-    if (layoutEngine === 'elk') {
-      mergedConfig.layout = 'elk'
-    }
+    // if (layoutEngine === 'elk') {
+    //   mergedConfig.layout = 'elk'
+    // }
 
     // Handle direction for flowchart/graph
     if (firstDiagramLine.startsWith('graph') || firstDiagramLine.startsWith('flowchart')) {
@@ -209,17 +222,53 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
   const renderDiagram = useCallback(async (mermaidCode: string) => {
     try {
-      // Register ELK layouts if needed
+      // Register layout loaders as needed
       if (layout === 'elk') {
         await registerElkLayouts()
+      } else if (layout === 'tidy-tree') {
+        await registerTidyTreeLayouts()
       }
 
       // Initialize mermaid with base config
+      // 使用莫兰迪色系配色，与 prompts/mermaid.ts 保持一致
       mermaid.initialize({
         startOnLoad: false,
-        theme: 'neutral',
+        theme: 'base',
         securityLevel: 'loose',
         fontFamily: 'inherit',
+        themeVariables: {
+          // 基础颜色 - 莫兰迪蓝
+          primaryColor: '#e3f2fd',
+          primaryTextColor: '#0d47a1',
+          primaryBorderColor: '#2196f3',
+          lineColor: '#546e7a',
+          // 思维导图分支配色 (cScale0-11) - 低饱和度莫兰迪色系
+          cScale0: '#e3f2fd',  // 莫兰迪蓝 (主色)
+          cScale1: '#fff3e0',  // 莫兰迪橙
+          cScale2: '#e8f5e9',  // 莫兰迪绿
+          cScale3: '#f3e5f5',  // 莫兰迪紫
+          cScale4: '#fce4ec',  // 莫兰迪粉
+          cScale5: '#e0f7fa',  // 莫兰迪青
+          cScale6: '#fff8e1',  // 莫兰迪黄
+          cScale7: '#efebe9',  // 莫兰迪棕
+          cScale8: '#e8eaf6',  // 莫兰迪靛
+          cScale9: '#f1f8e9',  // 莫兰迪草绿
+          cScale10: '#fbe9e7', // 莫兰迪珊瑚
+          cScale11: '#e1f5fe', // 莫兰迪天蓝
+          // 对应的文字颜色
+          cScaleLabel0: '#0d47a1',
+          cScaleLabel1: '#e65100',
+          cScaleLabel2: '#1b5e20',
+          cScaleLabel3: '#4a148c',
+          cScaleLabel4: '#880e4f',
+          cScaleLabel5: '#006064',
+          cScaleLabel6: '#ff6f00',
+          cScaleLabel7: '#3e2723',
+          cScaleLabel8: '#1a237e',
+          cScaleLabel9: '#33691e',
+          cScaleLabel10: '#bf360c',
+          cScaleLabel11: '#01579b',
+        },
       })
 
       const codeWithConfig = injectConfig(mermaidCode, layout, direction)
@@ -393,14 +442,30 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     img.src = dataUrl
   }, [svg])
 
+  // Export as source (.mmd file)
+  const exportAsSource = useCallback(() => {
+    if (!code) return
+
+    const blob = new Blob([code], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `diagram-${Date.now()}.mmd`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }, [code])
+
   // Expose methods via ref
   useImperativeHandle(ref, () => ({
     exportAsSvg,
     exportAsPng,
+    exportAsSource,
     showSourceCode: () => setShowCodePanel(true),
     hideSourceCode: () => setShowCodePanel(false),
     toggleSourceCode: () => setShowCodePanel(prev => !prev),
-  }), [exportAsSvg, exportAsPng])
+  }), [exportAsSvg, exportAsPng, exportAsSource])
 
   // Layout change handler
   const handleLayoutChange = useCallback((value: string) => {
@@ -496,10 +561,14 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
                   <Button variant="ghost" size="sm" className="gap-1.5">
                     {layout === 'elk' ? (
                       <LayoutGrid className="h-4 w-4" />
+                    ) : layout === 'tidy-tree' ? (
+                      <Network className="h-4 w-4" />
                     ) : (
                       <GitBranch className="h-4 w-4" />
                     )}
-                    <span className="text-xs">{layout === 'elk' ? 'ELK' : 'Dagre'}</span>
+                    <span className="text-xs">
+                      {layout === 'elk' ? 'ELK' : layout === 'tidy-tree' ? 'Tidy Tree' : 'Dagre'}
+                    </span>
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
@@ -509,6 +578,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
               <DropdownMenuRadioGroup value={layout} onValueChange={handleLayoutChange}>
                 <DropdownMenuRadioItem value="dagre">Dagre (默认)</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="elk">ELK (层次化)</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="tidy-tree">Tidy Tree (思维导图专用)</DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -18,6 +18,9 @@ import type { PayloadMessage, EngineType, Attachment, ContentPart } from '@/type
 // Enable streaming by default, can be configured
 const USE_STREAMING = true
 
+// Maximum retry attempts for Mermaid auto-fix
+const MAX_MERMAID_FIX_ATTEMPTS = 3
+
 /**
  * Build multimodal content from text, attachments, and optional current thumbnail
  * @param text - The text content
@@ -64,6 +67,12 @@ function buildMultimodalContent(
         parts.push({
           type: 'text',
           text: `\n\n[Document: ${attachment.fileName}]\n${attachment.content}`,
+        })
+      } else if (attachment.type === 'url') {
+        // For URLs, append the extracted markdown content
+        parts.push({
+          type: 'text',
+          text: `\n\n[URL: ${attachment.title}]\n${attachment.content}`,
         })
       }
     }
@@ -160,12 +169,29 @@ export function useAIGenerate() {
         )
       }
 
-      // Validate the generated content
+      // Validate the generated content with auto-fix for Mermaid
       console.log('finalCode', finalCode)
-      const validation = await validateContent(finalCode, engineType)
+      let validatedCode = finalCode
+      let validation = await validateContent(validatedCode, engineType)
+
+      // Auto-fix mechanism for Mermaid engine
+      if (!validation.valid && engineType === 'mermaid') {
+        validatedCode = await attemptMermaidAutoFix(
+          validatedCode,
+          validation.error || 'Unknown error',
+          systemPrompt,
+          assistantMsgId
+        )
+        // Re-validate after fix attempts
+        validation = await validateContent(validatedCode, engineType)
+      }
+
       if (!validation.valid) {
         throw new Error(`Invalid ${engineType} output: ${validation.error}`)
       }
+
+      // Use the validated (possibly fixed) code
+      finalCode = validatedCode
 
       // Update content (AI generation auto-saves, so mark as saved)
       setContentFromVersion(finalCode)
@@ -372,6 +398,69 @@ export function useAIGenerate() {
       const response = await aiService.chat(messages)
       return extractCode(response, engineType)
     }
+  }
+
+  /**
+   * Attempt to auto-fix Mermaid code errors by asking AI to fix them
+   */
+  const attemptMermaidAutoFix = async (
+    failedCode: string,
+    errorMessage: string,
+    systemPrompt: string,
+    assistantMsgId: string
+  ): Promise<string> => {
+    let currentCode = failedCode
+    let currentError = errorMessage
+    let attempts = 0
+
+    while (attempts < MAX_MERMAID_FIX_ATTEMPTS) {
+      attempts++
+
+      updateMessage(assistantMsgId, {
+        content: `修复报错 (尝试 ${attempts}/${MAX_MERMAID_FIX_ATTEMPTS})...\n错误: ${currentError}`,
+        status: 'streaming',
+      })
+
+      const fixPrompt = `请修复下面 Mermaid 代码中的错误，只返回修复后的代码。
+      报错："""${currentError}"""
+      当前代码："""${currentCode}"""`
+
+      const messages: PayloadMessage[] = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: fixPrompt },
+      ]
+
+      setMessages(messages)
+
+      let fixedCode: string
+      if (USE_STREAMING) {
+        const response = await aiService.streamChat(
+          messages,
+          (_chunk, accumulated) => {
+            updateMessage(assistantMsgId, {
+              content: `修复报错 (尝试 ${attempts}/${MAX_MERMAID_FIX_ATTEMPTS})...\n\n${accumulated}`,
+            })
+          }
+        )
+        fixedCode = extractCode(response, 'mermaid')
+      } else {
+        const response = await aiService.chat(messages)
+        fixedCode = extractCode(response, 'mermaid')
+      }
+
+      // Validate the fixed code
+      const validation = await validateContent(fixedCode, 'mermaid')
+      if (validation.valid) {
+        return fixedCode
+      }
+
+      // Update for next iteration
+      currentCode = fixedCode
+      currentError = validation.error || 'Unknown error'
+    }
+
+    // Return the last attempted code (will be validated again in caller)
+    return currentCode
   }
 
   return { generate }

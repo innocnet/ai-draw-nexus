@@ -1,13 +1,21 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, Paperclip, ChevronDown, Plus, Send } from 'lucide-react'
-import { Button } from '@/components/ui'
+import { Sparkles, Paperclip, ChevronDown, Plus, Send, Link, X, MoveRight } from 'lucide-react'
+import { Button, Loading } from '@/components/ui'
 import { AppSidebar, AppHeader, CreateProjectDialog } from '@/components/layout'
 import { ENGINES, QUICK_ACTIONS } from '@/constants'
 import { formatDate } from '@/lib/utils'
-import type { EngineType, Project } from '@/types'
+import type { EngineType, Project, UrlAttachment, Attachment, ImageAttachment, DocumentAttachment } from '@/types'
 import { ProjectRepository } from '@/services/projectRepository'
 import { useChatStore } from '@/stores/chatStore'
+import { aiService } from '@/services/aiService'
+import { useToast } from '@/hooks/useToast'
+import {
+  fileToBase64,
+  parseDocument,
+  validateImageFile,
+  SUPPORTED_IMAGE_TYPES,
+} from '@/lib/fileUtils'
 
 export function HomePage() {
   const navigate = useNavigate()
@@ -17,9 +25,14 @@ export function HomePage() {
   const [recentProjects, setRecentProjects] = useState<Project[]>([])
   const [showEngineDropdown, setShowEngineDropdown] = useState(false)
   const [attachments, setAttachments] = useState<File[]>([])
+  const [urlAttachments, setUrlAttachments] = useState<UrlAttachment[]>([])
+  const [showUrlInput, setShowUrlInput] = useState(false)
+  const [urlInputValue, setUrlInputValue] = useState('')
+  const [isParsingUrl, setIsParsingUrl] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const setInitialPrompt = useChatStore((state) => state.setInitialPrompt)
+  const { error: showError } = useToast()
 
   // 新建项目弹窗状态
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -56,7 +69,35 @@ export function HomePage() {
         engineType: selectedEngine,
       })
 
-      setInitialPrompt(prompt.trim())
+      // 转换文件附件为 Attachment 类型
+      const convertedAttachments: Attachment[] = []
+
+      for (const file of attachments) {
+        if (SUPPORTED_IMAGE_TYPES.includes(file.type)) {
+          const dataUrl = await fileToBase64(file)
+          const imageAtt: ImageAttachment = {
+            type: 'image',
+            dataUrl,
+            fileName: file.name,
+          }
+          convertedAttachments.push(imageAtt)
+        } else {
+          const content = await parseDocument(file)
+          const docAtt: DocumentAttachment = {
+            type: 'document',
+            content,
+            fileName: file.name,
+          }
+          convertedAttachments.push(docAtt)
+        }
+      }
+
+      // 添加 URL 附件
+      convertedAttachments.push(...urlAttachments)
+
+      // 传递 prompt 和附件
+      const allAttachments = convertedAttachments.length > 0 ? convertedAttachments : null
+      setInitialPrompt(prompt.trim(), allAttachments)
       navigate(`/editor/${project.id}`)
     } catch (error) {
       console.error('Failed to create project:', error)
@@ -94,6 +135,36 @@ export function HomePage() {
     setAttachments(prev => prev.filter((_, i) => i !== index))
   }
 
+  const removeUrlAttachment = (index: number) => {
+    setUrlAttachments(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleUrlSubmit = async () => {
+    const url = urlInputValue.trim()
+    if (!url) return
+
+    setIsParsingUrl(true)
+    try {
+      const result = await aiService.parseUrl(url)
+      if (result.data) {
+        const urlAttachment: UrlAttachment = {
+          type: 'url',
+          content: result.data.content,
+          url: result.data.url,
+          title: result.data.title,
+        }
+        setUrlAttachments(prev => [...prev, urlAttachment])
+        setUrlInputValue('')
+        setShowUrlInput(false)
+      }
+    } catch (err) {
+      showError(err instanceof Error ? err.message : '链接解析失败')
+      console.error(err)
+    } finally {
+      setIsParsingUrl(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen bg-background">
       {/* Floating Sidebar Navigation */}
@@ -126,7 +197,7 @@ export function HomePage() {
                 <Sparkles className="h-6 w-6 text-surface" />
               </div> */}
               <h1 className="text-3xl font-bold text-primary">
-                AI Draw Nexus 让图形绘制更简单
+                AI Draw Nexus 
               </h1>
             </div>
             <p className="text-muted">AI驱动的一站式绘图平台</p>
@@ -136,11 +207,11 @@ export function HomePage() {
           <div className="mb-6 w-full max-w-2xl">
             <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm transition-shadow focus-within:shadow-md">
               {/* 附件预览区域 */}
-              {attachments.length > 0 && (
+              {(attachments.length > 0 || urlAttachments.length > 0) && (
                 <div className="mb-3 flex flex-wrap gap-2">
                   {attachments.map((file, index) => (
                     <div
-                      key={index}
+                      key={`file-${index}`}
                       className="flex items-center gap-2 rounded-lg bg-background px-3 py-1.5 text-sm"
                     >
                       <Paperclip className="h-3 w-3 text-muted" />
@@ -149,6 +220,23 @@ export function HomePage() {
                       </span>
                       <button
                         onClick={() => removeAttachment(index)}
+                        className="text-muted hover:text-primary"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {urlAttachments.map((urlAtt, index) => (
+                    <div
+                      key={`url-${index}`}
+                      className="flex items-center gap-2 rounded-lg bg-background px-3 py-1.5 text-sm"
+                    >
+                      <Link className="h-3 w-3 text-muted" />
+                      <span className="max-w-[150px] truncate text-primary">
+                        {urlAtt.title}
+                      </span>
+                      <button
+                        onClick={() => removeUrlAttachment(index)}
                         className="text-muted hover:text-primary"
                       >
                         ×
@@ -195,6 +283,67 @@ export function HomePage() {
                       <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-primary"></div>
                     </div>
                   </button>
+
+                  {/* 添加链接 */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowUrlInput(!showUrlInput)}
+                      disabled={isParsingUrl}
+                      className="group relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted transition-colors hover:bg-background hover:text-primary disabled:opacity-50"
+                      title="添加网页链接，AI将解析内容"
+                    >
+                      <Link className="h-4 w-4" />
+                      <span>添加链接</span>
+                      <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-primary px-3 py-2 text-xs text-surface opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                        添加网页链接，AI将解析内容生成图表
+                        <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-primary"></div>
+                      </div>
+                    </button>
+
+                    {/* 链接输入弹出框 */}
+                    {showUrlInput && (
+                      <div className="absolute bottom-full left-0 mb-2 flex items-center gap-2 rounded-lg border border-border bg-surface p-2 shadow-lg">
+                        <input
+                          type="url"
+                          placeholder="输入网址链接..."
+                          value={urlInputValue}
+                          onChange={(e) => setUrlInputValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              handleUrlSubmit()
+                            } else if (e.key === 'Escape') {
+                              setShowUrlInput(false)
+                              setUrlInputValue('')
+                            }
+                          }}
+                          disabled={isParsingUrl}
+                          className="w-64 rounded border border-border bg-background px-2 py-1 text-sm outline-none focus:border-primary disabled:opacity-50"
+                          autoFocus
+                        />
+                        <Button
+                          size="sm"
+                          onClick={handleUrlSubmit}
+                          disabled={!urlInputValue.trim() || isParsingUrl}
+                          className="h-7 px-2"
+                        >
+                          {isParsingUrl ? <Loading size="sm" /> : <MoveRight className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setShowUrlInput(false)
+                            setUrlInputValue('')
+                          }}
+                          disabled={isParsingUrl}
+                          className="h-7 px-2"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
 
                   {/* 选择绘图引擎 */}
                   <div className="relative">
@@ -267,7 +416,17 @@ export function HomePage() {
 
           {/* Quick Actions */}
           <div className="mb-12 w-full max-w-3xl">
-            <p className="mb-4 text-center text-sm text-muted">试试这些示例，快速开始</p>
+            <p className="mb-4 text-center text-sm text-muted">
+              <span className="inline-flex items-center gap-1.5">
+                支持：
+                <span>📄 上传文档，可视化阅读</span>
+                <span className="text-border">·</span>
+                <span>🖼️ 上传图片复刻图表</span>
+                <span className="text-border">·</span>
+                <span>🔗 链接解析，快速解读网页</span>
+              </span>
+            </p>
+            <p className="mb-4 text-left text-sm text-muted">试试这些用例，快速开始</p>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
               {QUICK_ACTIONS.map((action, index) => (
                 <button

@@ -2,15 +2,38 @@
 
 An AI-powered diagram creation platform. Describe your diagram in natural language, and AI generates it for you.
 
-## Features
+This is not just a tool, but a full-featured diagram creation platform.
 
-- **Natural Language Generation** - Just describe what you want, AI creates the diagram
-- **Three Drawing Engines**
-  - Mermaid - Flowcharts, sequence diagrams, class diagrams
-  - Excalidraw - Hand-drawn style diagrams
-  - Draw.io - Professional diagram editor
-- **Version History** - Auto-saves every change, restore anytime
-- **Local Storage** - Data stored in browser, privacy-friendly
+## Key Highlights
+
+### Three Drawing Engines
+
+Three distinctive drawing engines to meet different needs:
+
+- **Mermaid** - Flowcharts, sequence diagrams, class diagrams - code-driven, precise control
+- **Excalidraw** - Hand-drawn style diagrams, clean and beautiful, great for brainstorming
+- **Draw.io** - Professional diagram editor, feature-rich, ideal for complex diagrams
+
+### Intuitive Project Management
+
+- Easily manage all your diagram projects
+- Complete version history, restore to any previous version
+- **All data stored locally** - no privacy concerns
+
+### Superior Drawing Experience
+
+- **Instant Response** - Almost all diagrams render in seconds, no more waiting
+- **Beautiful Styling** - Specially optimized Mermaid rendering for significantly improved aesthetics
+- **Smart Editing** - Continue editing based on existing diagrams, AI understands context
+- **Spatial Awareness** - Better layout capabilities, fewer arrows crossing through elements
+
+### Multimodal Input
+
+Beyond text descriptions, also supports:
+
+- **Document Visualization** - Upload documents to auto-generate visual diagrams
+- **Image Recreation** - Upload images, AI recognizes and recreates diagrams
+- **Link Parsing** - Enter URLs to auto-parse content and generate diagrams
 
 ## Quick Start
 
@@ -51,55 +74,93 @@ In the chat panel on the right side of the editor, you can:
 - Click any version to preview
 - Click "Restore" to revert to that version
 
-## Deployment
-
-### Frontend
-
-Deploy to Vercel with one click, or any static hosting platform.
-
-### Backend
-
-Backend uses Cloudflare Workers. Configure your AI API:
-
-```bash
-cd worker
-
-# Set environment variables
-pnpm run secret:set AI_API_KEY      # Your API Key
-pnpm run secret:set AI_BASE_URL     # API endpoint
-
-# Deploy
-pnpm run deploy:prod
-```
-
-### Supported AI Services
-
-| Provider | Recommended Models |
-|----------|-------------------|
-| OpenAI | gpt-4o, gpt-4o-mini |
-| Anthropic | claude-3-opus, claude-3-sonnet |
-| Other OpenAI-compatible services | - |
-
 ## Local Development
 
-```bash
-# Install dependencies
-pnpm install
-cd worker && pnpm install && cd ..
+### 1. Clone and Install Dependencies
 
-# Start dev servers (run both)
-pnpm run dev              # Frontend http://localhost:5173
-cd worker && pnpm run dev # Backend http://localhost:8787
+```bash
+git clone https://github.com/liujuntao123/ai-draw-nexus
+cd ai-draw-nexus
+
+# Install frontend dependencies
+pnpm install
+
+# Install backend dependencies
+cd worker && pnpm install 
 ```
 
-Configure `worker/.dev.vars`:
+### 2. Configure Environment Variables
+
+Create a `.dev.vars` file in the `worker/` directory:
 
 ```env
 AI_API_KEY=your-api-key
 AI_BASE_URL=https://api.openai.com/v1
 AI_PROVIDER=openai
-AI_MODEL_ID=gpt-4o-mini
+AI_MODEL_ID=gpt-5
 ```
+
+> Supports OpenAI, Anthropic, and other OpenAI-compatible services
+
+### 3. Start Development Servers
+
+Run both frontend and backend simultaneously:
+
+```bash
+# Terminal 1 - Start frontend
+pnpm run dev
+# Visit http://localhost:5173
+
+# Terminal 2 - Start backend
+cd worker && pnpm run dev
+# Visit http://localhost:8787
+```
+
+## Cloudflare Deployment
+
+### Frontend Deployment
+
+Build static files and deploy to any static hosting platform (Vercel, Netlify, Cloudflare Pages, etc.):
+
+```bash
+pnpm run build
+# Output directory: dist/
+```
+
+### Backend Deployment (Cloudflare Workers)
+
+#### 1. Install Wrangler CLI
+
+```bash
+pnpm install -g wrangler
+wrangler login
+```
+
+#### 2. Configure Production Secrets
+
+```bash
+cd worker
+
+# Set required environment variables
+wrangler secret put AI_API_KEY --env production
+wrangler secret put AI_BASE_URL --env production
+wrangler secret put AI_PROVIDER --env production
+wrangler secret put AI_MODEL_ID --env production
+```
+
+#### 3. Deploy to Production
+
+```bash
+pnpm run deploy:prod
+```
+
+### Supported AI Services
+
+| Provider | AI_PROVIDER | AI_BASE_URL | Recommended Models |
+|----------|-------------|-------------|-------------------|
+| OpenAI | openai | https://api.openai.com/v1 | gpt-5 |
+| Anthropic | anthropic | https://api.anthropic.com/v1 | claude-sonnet-4-5 |
+| Other compatible | openai | Custom URL | - |
 
 ## Tech Stack
 

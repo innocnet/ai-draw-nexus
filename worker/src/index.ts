@@ -1,8 +1,13 @@
+import { parseHTML } from 'linkedom'
+import { Readability } from '@mozilla/readability'
+import TurndownService from 'turndown'
+
 export interface Env {
   AI_PROVIDER: string
   AI_BASE_URL: string
   AI_API_KEY: string
   AI_MODEL_ID: string
+  ACCESS_PASSWORD?: string
 }
 
 interface Message {
@@ -50,7 +55,36 @@ interface AnthropicResponse {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Access-Password',
+  'Access-Control-Expose-Headers': 'X-Quota-Exempt',
+}
+
+/**
+ * 验证访问密码
+ * @returns { valid: boolean, exempt: boolean }
+ * - valid: 请求是否有效（密码正确或无需密码）
+ * - exempt: 是否免除配额消耗
+ */
+function validateAccessPassword(request: Request, env: Env): { valid: boolean; exempt: boolean } {
+  const password = request.headers.get('X-Access-Password')
+  const configuredPassword = env.ACCESS_PASSWORD
+
+  // 后端未配置密码，所有请求都有效但不免除配额
+  if (!configuredPassword) {
+    return { valid: true, exempt: false }
+  }
+
+  // 请求携带密码
+  if (password) {
+    if (password === configuredPassword) {
+      return { valid: true, exempt: true }
+    }
+    // 密码错误
+    return { valid: false, exempt: false }
+  }
+
+  // 未携带密码，有效但不免除配额
+  return { valid: true, exempt: false }
 }
 
 export default {
@@ -67,6 +101,11 @@ export default {
       return handleChat(request, env)
     }
 
+    // URL parsing endpoint
+    if (url.pathname === '/api/parse-url' && request.method === 'POST') {
+      return handleParseUrl(request)
+    }
+
     // Health check
     if (url.pathname === '/api/health') {
       return new Response(JSON.stringify({ status: 'ok' }), {
@@ -80,6 +119,15 @@ export default {
 
 async function handleChat(request: Request, env: Env): Promise<Response> {
   try {
+    // 验证访问密码
+    const { valid, exempt } = validateAccessPassword(request, env)
+    if (!valid) {
+      return new Response(JSON.stringify({ error: '访问密码错误' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const body: ChatRequest = await request.json()
     const { messages, stream = false } = body
 
@@ -92,14 +140,17 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
     const provider = env.AI_PROVIDER || 'openai'
 
+    // 添加配额免除标记的响应头
+    const quotaHeaders = { ...corsHeaders, 'X-Quota-Exempt': exempt ? 'true' : 'false' }
+
     if (stream) {
       // Streaming response
       switch (provider) {
         case 'anthropic':
-          return streamAnthropic(messages, env)
+          return streamAnthropic(messages, env, exempt)
         case 'openai':
         default:
-          return streamOpenAI(messages, env)
+          return streamOpenAI(messages, env, exempt)
       }
     } else {
       // Non-streaming response
@@ -116,7 +167,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
       }
 
       return new Response(JSON.stringify({ content: response }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...quotaHeaders, 'Content-Type': 'application/json' },
       })
     }
   } catch (error) {
@@ -236,7 +287,7 @@ function convertContentPartsToAnthropic(parts: ContentPart[]): AnthropicContentP
 /**
  * Stream OpenAI response using SSE
  */
-async function streamOpenAI(messages: Message[], env: Env): Promise<Response> {
+async function streamOpenAI(messages: Message[], env: Env, exempt: boolean = false): Promise<Response> {
   const baseUrl = env.AI_BASE_URL
   const apiKey = env.AI_API_KEY
 
@@ -317,6 +368,7 @@ async function streamOpenAI(messages: Message[], env: Env): Promise<Response> {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
+      'X-Quota-Exempt': exempt ? 'true' : 'false',
     },
   })
 }
@@ -324,7 +376,7 @@ async function streamOpenAI(messages: Message[], env: Env): Promise<Response> {
 /**
  * Stream Anthropic response using SSE
  */
-async function streamAnthropic(messages: Message[], env: Env): Promise<Response> {
+async function streamAnthropic(messages: Message[], env: Env, exempt: boolean = false): Promise<Response> {
   const baseUrl = env.AI_BASE_URL
   const apiKey = env.AI_API_KEY
 
@@ -416,6 +468,209 @@ async function streamAnthropic(messages: Message[], env: Env): Promise<Response>
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
+      'X-Quota-Exempt': exempt ? 'true' : 'false',
     },
   })
+}
+
+/**
+ * Check if URL is a WeChat article
+ */
+function isWechatArticle(url: string): boolean {
+  return url.includes('mp.weixin.qq.com')
+}
+
+/**
+ * Preprocess WeChat article DOM
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function preprocessWechatArticle(document: any): void {
+  const jsContent = document.getElementById('js_content')
+  if (jsContent) {
+    jsContent.style.visibility = 'visible'
+    jsContent.style.display = 'block'
+  }
+
+  const images = document.querySelectorAll('img[data-src]')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  images.forEach((img: any) => {
+    const dataSrc = img.getAttribute('data-src')
+    if (dataSrc) {
+      img.setAttribute('src', dataSrc)
+    }
+  })
+
+  const removeSelectors = [
+    '#js_pc_qr_code',
+    '#js_profile_qrcode',
+    '.qr_code_pc_outer',
+    '.rich_media_area_extra',
+    '.reward_area',
+    '#js_tags',
+    '.original_area_primary',
+    '.original_area_extra',
+  ]
+  removeSelectors.forEach((selector) => {
+    const elements = document.querySelectorAll(selector)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    elements.forEach((el: any) => el.remove())
+  })
+}
+
+/**
+ * Extract content from WeChat article (fallback when Readability fails)
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractWechatContent(document: any): { title: string; content: string } | null {
+  const titleEl = document.getElementById('activity-name') ||
+                  document.querySelector('.rich_media_title') ||
+                  document.querySelector('h1')
+  const title = titleEl?.textContent?.trim() || '微信公众号文章'
+
+  const contentEl = document.getElementById('js_content') ||
+                    document.querySelector('.rich_media_content')
+
+  if (!contentEl) {
+    return null
+  }
+
+  return { title, content: contentEl.innerHTML }
+}
+
+/**
+ * Handle URL parsing request
+ */
+async function handleParseUrl(request: Request): Promise<Response> {
+  try {
+    const { url } = await request.json() as { url: string }
+
+    if (!url || typeof url !== 'string') {
+      return new Response(JSON.stringify({ error: '请提供有效的URL' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Validate URL format
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(url)
+    } catch {
+      return new Response(JSON.stringify({ error: 'URL格式无效' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const isWechat = isWechatArticle(url)
+
+    // Build request headers
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    }
+
+    if (isWechat) {
+      headers['Referer'] = 'https://mp.weixin.qq.com/'
+    }
+
+    // Fetch the page
+    const response = await fetch(url, { headers, redirect: 'follow' })
+
+    if (!response.ok) {
+      return new Response(
+        JSON.stringify({ error: `无法获取页面内容: ${response.status}` }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const html = await response.text()
+    const { document } = parseHTML(html)
+
+    if (isWechat) {
+      preprocessWechatArticle(document)
+    }
+
+    // Try Readability first
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reader = new Readability(document.cloneNode(true) as any)
+    let article = reader.parse()
+
+    // Fallback for WeChat
+    if (!article && isWechat) {
+      const wechatContent = extractWechatContent(document)
+      if (wechatContent) {
+        article = {
+          title: wechatContent.title,
+          content: wechatContent.content,
+          textContent: '',
+          length: wechatContent.content.length,
+          excerpt: '',
+          byline: '',
+          dir: '',
+          siteName: '微信公众号',
+          lang: 'zh-CN',
+          publishedTime: null,
+        }
+      }
+    }
+
+    if (!article) {
+      return new Response(
+        JSON.stringify({ error: '无法解析页面内容，该页面可能不是文章类型' }),
+        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Convert to Markdown
+    const turndownService = new TurndownService({
+      headingStyle: 'atx',
+      codeBlockStyle: 'fenced',
+      bulletListMarker: '-',
+    })
+
+    turndownService.addRule('removeEmptyLinks', {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      filter: (node: any) => node.nodeName === 'A' && !node.textContent?.trim(),
+      replacement: () => '',
+    })
+
+    turndownService.addRule('wechatImages', {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      filter: (node: any) => node.nodeName === 'IMG',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      replacement: (_content: string, node: any) => {
+        const src = node.getAttribute('src') || node.getAttribute('data-src') || ''
+        const alt = node.getAttribute('alt') || ''
+        return src ? `![${alt}](${src})` : ''
+      },
+    })
+
+    const wrappedHtml = `<!DOCTYPE html><html><body>${article.content || ''}</body></html>`
+    const { document: contentDoc } = parseHTML(wrappedHtml)
+    const markdown = turndownService.turndown(contentDoc.body)
+
+    const siteName = isWechat ? '微信公众号' : parsedUrl.hostname
+    const fullMarkdown = `# ${article.title}\n\n> 来源: [${siteName}](${url})\n\n${markdown}`
+
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        title: article.title,
+        content: fullMarkdown,
+        excerpt: article.excerpt,
+        siteName: article.siteName || siteName,
+        url: url,
+      },
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  } catch (error) {
+    console.error('Parse URL error:', error)
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : '解析失败' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
 }

@@ -29,6 +29,7 @@ export interface DrawioEditorRef {
   exportDiagram: (format?: 'xmlsvg' | 'png' | 'svg') => void
   exportAsSvg: () => void
   exportAsPng: () => void
+  exportAsSource: () => void
   showSourceCode: () => void
   hideSourceCode: () => void
   toggleSourceCode: () => void
@@ -141,6 +142,21 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       saveDiagramToFile(`diagram-${Date.now()}`, 'png')
     }, [saveDiagramToFile])
 
+    // Export as source (.drawio file - XML format)
+    const exportAsSource = useCallback(() => {
+      if (!data) return
+
+      const blob = new Blob([data], { type: 'application/xml' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `diagram-${Date.now()}.drawio`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    }, [data])
+
     // Expose methods via ref
     useImperativeHandle(ref, () => ({
       load: (xml: string) => {
@@ -155,10 +171,11 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       },
       exportAsSvg,
       exportAsPng,
+      exportAsSource,
       showSourceCode: () => setShowCodePanel(true),
       hideSourceCode: () => setShowCodePanel(false),
       toggleSourceCode: () => setShowCodePanel(prev => !prev),
-    }), [exportAsSvg, exportAsPng])
+    }), [exportAsSvg, exportAsPng, exportAsSource])
 
     // Handle drawio load event
     const handleLoad = useCallback(() => {

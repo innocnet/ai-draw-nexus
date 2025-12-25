@@ -22,6 +22,7 @@ interface ExcalidrawEditorProps {
 export interface ExcalidrawEditorRef {
   exportAsSvg: () => void
   exportAsPng: () => void
+  exportAsSource: () => void
   showSourceCode: () => void
   hideSourceCode: () => void
   toggleSourceCode: () => void
@@ -333,14 +334,51 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
     }
   }, [excalidrawAPI])
 
+  // Export as source (.excalidraw file - JSON format)
+  const exportAsSource = useCallback(() => {
+    if (!excalidrawAPI) return
+
+    try {
+      const elements = excalidrawAPI.getSceneElements()
+      const appState = excalidrawAPI.getAppState()
+      const files = excalidrawAPI.getFiles()
+
+      const exportData = {
+        type: 'excalidraw',
+        version: 2,
+        source: 'https://excalidraw.com',
+        elements,
+        appState: {
+          gridSize: appState.gridSize,
+          viewBackgroundColor: appState.viewBackgroundColor,
+        },
+        files,
+      }
+
+      const jsonString = JSON.stringify(exportData, null, 2)
+      const blob = new Blob([jsonString], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `diagram-${Date.now()}.excalidraw`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Failed to export source:', err)
+    }
+  }, [excalidrawAPI])
+
   // Expose methods via ref
   useImperativeHandle(ref, () => ({
     exportAsSvg,
     exportAsPng,
+    exportAsSource,
     showSourceCode: () => setShowCodePanel(true),
     hideSourceCode: () => setShowCodePanel(false),
     toggleSourceCode: () => setShowCodePanel(prev => !prev),
-  }), [exportAsSvg, exportAsPng])
+  }), [exportAsSvg, exportAsPng, exportAsSource])
 
   // Handle changes from Excalidraw - use version tracking to prevent loops
   const handleChange = useCallback((

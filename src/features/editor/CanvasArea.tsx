@@ -7,6 +7,7 @@ import { DrawioEditor, type DrawioEditorRef } from '@/features/engines/drawio/Dr
 export interface CanvasAreaRef {
   exportAsSvg: () => void
   exportAsPng: () => void
+  exportAsSource: () => void
   showSourceCode: () => void
   hideSourceCode: () => void
   toggleSourceCode: () => void
@@ -53,6 +54,19 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
           break
         case 'drawio':
           drawioRef.current?.exportAsPng()
+          break
+      }
+    },
+    exportAsSource: () => {
+      switch (engineType) {
+        case 'mermaid':
+          mermaidRef.current?.exportAsSource()
+          break
+        case 'excalidraw':
+          excalidrawRef.current?.exportAsSource()
+          break
+        case 'drawio':
+          drawioRef.current?.exportAsSource()
           break
       }
     },

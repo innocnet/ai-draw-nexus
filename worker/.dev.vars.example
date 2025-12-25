@@ -1,0 +1,9 @@
+# AI 提供商配置
+AI_PROVIDER=openai
+AI_BASE_URL=https://api.openai.com/v1
+AI_API_KEY=your-api-key
+AI_MODEL_ID=gpt-4o-mini
+
+# 访问密码（可选）
+# 设置后，用户输入正确密码可无限制使用，不消耗每日配额
+ACCESS_PASSWORD=your-secret-password
