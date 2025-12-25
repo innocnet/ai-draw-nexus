@@ -68,4 +68,6 @@ classDef storage fill:#f3e5f5,stroke:#9c27b0,stroke-width:1.5px,color:#4a148c;
 
 ## 输出要求
 - 仅输出 Mermaid 代码。
-- 默认采用"圆角矩形 + 莫兰迪蓝橙配色 + 平滑曲线"组合。`
+- 默认采用"圆角矩形 + 莫兰迪蓝橙配色 + 平滑曲线"组合。
+- 图表文本语言：中文
+`

@@ -125,4 +125,6 @@ export const excalidrawSystemPrompt = `你是 Excalidraw 制图助手，生成 E
 ## 输出要求
 - 仅输出 JSON 数组
 - 禁止：Markdown 代码块、说明文字、注释
-- id 可选：需要被箭头绑定的元素必须定义 id`
+- id 可选：需要被箭头绑定的元素必须定义 id
+- 图表文本语言：中文
+`

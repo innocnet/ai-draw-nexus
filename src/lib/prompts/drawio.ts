@@ -107,4 +107,6 @@ export const drawioSystemPrompt = `你是 Draw.io 图表生成助手，精通 mx
 
 ## 输出要求
 - 仅输出合法的 mxGraph XML
-- 禁止：Markdown 代码块、说明文字、注释`
+- 禁止：Markdown 代码块、说明文字、注释
+- 图表文本语言：中文
+`

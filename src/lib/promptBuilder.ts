@@ -30,7 +30,7 @@ export function buildInitialPrompt(
 ${userInput}
 """
 
-根据以上需求，直接生成完整的图表代码，包含所有节点、连接和样式。`
+根据以上需求，生成完整的图表代码。`
   }
 
   // Two-phase generation (for drawio/excalidraw)
@@ -72,7 +72,7 @@ ${currentCode}
 
 用户修改请求："""${userInput}"""
 
-根据用户修改请求进行修改，同时尽量保持原有结构不变。输出完整的修改后图表代码。`
+根据用户修改请求进行修改，同时尽量保持原有结构不变。输出完整的修改后的图表代码。`
 }
 
 /**
