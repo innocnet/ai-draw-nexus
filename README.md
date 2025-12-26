@@ -3,6 +3,9 @@
 
 **Online**: https://ai-draw-nexus.aizhi.site
 
+![generated-image-1766740104116](https://github.com/user-attachments/assets/3e69fa19-d31f-40b2-976c-ddb24ac138c1)
+
+
 An AI-powered diagram creation platform. Describe your diagram in natural language, and AI generates it for you.
 
 Built on Cloudflare Pages with React frontend and Pages Functions backend.
