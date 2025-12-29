@@ -6,6 +6,13 @@ export interface Env {
   ACCESS_PASSWORD?: string
 }
 
+export interface LLMConfig {
+  provider: string
+  baseUrl: string
+  apiKey: string
+  modelId: string
+}
+
 export interface Message {
   role: 'system' | 'user' | 'assistant'
   content: string | ContentPart[]
@@ -30,6 +37,7 @@ export interface AnthropicContentPart {
 export interface ChatRequest {
   messages: Message[]
   stream?: boolean
+  llmConfig?: LLMConfig
 }
 
 export interface OpenAIResponse {

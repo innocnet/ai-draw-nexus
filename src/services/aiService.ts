@@ -5,15 +5,21 @@ import { quotaService } from './quotaService'
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
 /**
- * 获取请求头（包含访问密码）
+ * 获取请求头（包含访问密码和 LLM 配置）
  */
 function getHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
+  // 优先使用访问密码
   const password = quotaService.getAccessPassword()
   if (password) {
     headers['X-Access-Password'] = password
+  }
+  // 如果没有访问密码，检查是否有自定义 LLM 配置
+  const llmConfig = quotaService.getLLMConfig()
+  if (llmConfig && llmConfig.apiKey) {
+    headers['X-Custom-LLM'] = 'true'
   }
   return headers
 }
@@ -30,12 +36,33 @@ function checkAndConsumeQuota(response: Response): void {
 }
 
 /**
- * 检查是否有足够配额（有密码时跳过检查）
+ * 检查是否有足够配额（有密码或自定义 LLM 配置时跳过检查）
  */
 function ensureQuotaAvailable(): void {
-  if (!quotaService.hasAccessPassword() && !quotaService.hasQuotaRemaining()) {
-    throw new Error('今日配额已用完，请明天再试或设置访问密码')
+  // 优先检查访问密码，其次检查 LLM 配置
+  if (quotaService.hasAccessPassword() || quotaService.hasLLMConfig()) {
+    return
   }
+  if (!quotaService.hasQuotaRemaining()) {
+    throw new Error('今日配额已用完，请明天再试或设置访问密码/自定义 LLM 配置')
+  }
+}
+
+/**
+ * 构建请求体（包含 LLM 配置，如果有的话）
+ */
+function buildRequestBody(messages: PayloadMessage[], stream = false): object {
+  const body: Record<string, unknown> = { messages, stream }
+
+  // 如果没有访问密码但有自定义 LLM 配置，则添加到请求体
+  if (!quotaService.hasAccessPassword() && quotaService.hasLLMConfig()) {
+    const llmConfig = quotaService.getLLMConfig()
+    if (llmConfig) {
+      body.llmConfig = llmConfig
+    }
+  }
+
+  return body
 }
 
 interface ParseUrlResponse {
@@ -96,12 +123,10 @@ export const aiService = {
   async chat(messages: PayloadMessage[]): Promise<string> {
     ensureQuotaAvailable()
 
-    const request: ChatRequest = { messages }
-
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify(request),
+      body: JSON.stringify(buildRequestBody(messages, false)),
     })
 
     if (!response.ok) {
@@ -129,12 +154,10 @@ export const aiService = {
   ): Promise<string> {
     ensureQuotaAvailable()
 
-    const request: ChatRequest = { messages, stream: true } as ChatRequest & { stream: boolean }
-
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify(request),
+      body: JSON.stringify(buildRequestBody(messages, true)),
     })
 
     if (!response.ok) {
