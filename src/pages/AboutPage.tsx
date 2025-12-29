@@ -29,6 +29,22 @@ export function AboutPage() {
               </p>
             </section>
 
+            {/* 赞助支持 */}
+            <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
+              <h2 className="mb-4 text-lg font-medium text-primary">赞助支持</h2>
+              <p className="mb-4 text-sm leading-relaxed text-muted">
+                如果你认为本项目对你有帮助，欢迎请作者喝奶茶。
+                同时你将获得网站的无限使用额度。
+              </p>
+              <div className="flex justify-center">
+                <img
+                  src="/donate.png"
+                  alt="请作者喝奶茶"
+                  className="max-w-xs rounded-lg border border-border"
+                />
+              </div>
+            </section>
+
             {/* 联系作者 */}
             <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
               <h2 className="mb-4 text-lg font-medium text-primary">联系作者</h2>
@@ -44,20 +60,6 @@ export function AboutPage() {
               </div>
             </section>
 
-            {/* 赞助支持 */}
-            <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-medium text-primary">赞助支持</h2>
-              <p className="mb-4 text-sm leading-relaxed text-muted">
-                如果你认为本项目对你有帮助，欢迎请作者喝奶茶。
-              </p>
-              <div className="flex justify-center">
-                <img
-                  src="/donate.png"
-                  alt="请作者喝奶茶"
-                  className="max-w-xs rounded-lg border border-border"
-                />
-              </div>
-            </section>
           </div>
         </div>
       </main>
