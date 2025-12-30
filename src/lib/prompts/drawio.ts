@@ -18,7 +18,7 @@ export const drawioSystemPrompt = `你是 Draw.io 图表生成助手，精通 mx
     </mxGraphModel>
 """
 
-### 标签闭合规则
+### 标签语法规则
 1. 自闭合标签：无子元素的标签必须使用 /> 结尾
    - 正确：<mxGeometry x="0" y="0" width="100" height="50" as="geometry" />
    - 正确：<mxCell id="0" />
@@ -29,6 +29,8 @@ export const drawioSystemPrompt = `你是 Draw.io 图表生成助手，精通 mx
 3. 属性值：所有属性值必须用双引号包裹
 
 4. Array标签: Array标签必须包含"as"属性
+
+5. <mxCell>标签严禁嵌套<mxCell>标签
 
 ### mxCell 元素规范
 
