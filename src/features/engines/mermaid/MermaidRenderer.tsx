@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHand
 import mermaid from 'mermaid'
 import elkLayouts from '@mermaid-js/layout-elk'
 import tidyTreeLayouts from '@mermaid-js/layout-tidy-tree'
-import Editor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { useEditorStore } from '@/stores/editorStore'
@@ -23,8 +22,6 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
-  Download,
-  Image,
   ArrowRight,
   ArrowLeft,
   ArrowDown,
@@ -32,13 +29,8 @@ import {
   LayoutGrid,
   GitBranch,
   Network,
-  Code,
-  X,
-  Copy,
-  Check,
-  Play,
-  Undo2,
 } from 'lucide-react'
+import { SourceCodePanel } from '@/components/ui/SourceCodePanel'
 
 interface MermaidRendererProps {
   code: string
@@ -106,17 +98,8 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   const [layout, setLayout] = useState<LayoutEngine>('dagre')
   const [direction, setDirection] = useState<Direction>('TB')
   const [showCodePanel, setShowCodePanel] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [editedCode, setEditedCode] = useState(code)
-  const [hasChanges, setHasChanges] = useState(false)
 
   const { setContent } = useEditorStore()
-
-  // Sync editedCode when code prop changes
-  useEffect(() => {
-    setEditedCode(code)
-    setHasChanges(false)
-  }, [code])
 
   // Extract balanced braces content from a string starting at given position
   const extractBalancedBraces = useCallback((str: string, startPos: number): string | null => {
@@ -477,37 +460,12 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     setDirection(value as Direction)
   }, [])
 
-  // Copy code handler
-  const handleCopyCode = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(editedCode)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch (err) {
-      console.error('Failed to copy code:', err)
+  // Apply code changes from SourceCodePanel
+  const handleApplyCode = useCallback((newCode: string) => {
+    if (newCode.trim() && newCode !== code) {
+      setContent(newCode)
     }
-  }, [editedCode])
-
-  // Handle code edit (for Monaco Editor)
-  const handleCodeChange = useCallback((value: string | undefined) => {
-    const newCode = value || ''
-    setEditedCode(newCode)
-    setHasChanges(newCode !== code)
-  }, [code])
-
-  // Apply code changes
-  const handleApplyCode = useCallback(() => {
-    if (editedCode.trim() && editedCode !== code) {
-      setContent(editedCode)
-      setHasChanges(false)
-    }
-  }, [editedCode, code, setContent])
-
-  // Reset code to original
-  const handleResetCode = useCallback(() => {
-    setEditedCode(code)
-    setHasChanges(false)
-  }, [code])
+  }, [code, setContent])
 
   if (!code.trim()) {
     return (
@@ -688,101 +646,13 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
         {/* Code Panel */}
         {showCodePanel && (
-          <div className="absolute bottom-4 right-4 w-96 max-h-[70%] flex flex-col border border-border bg-surface shadow-lg">
-            {/* Panel Header */}
-            <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Mermaid 源码</span>
-                {hasChanges && (
-                  <span className="text-xs text-amber-500">• 未保存</span>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleCopyCode}
-                      className="h-7 w-7 p-0"
-                    >
-                      {copied ? (
-                        <Check className="h-3.5 w-3.5 text-green-500" />
-                      ) : (
-                        <Copy className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{copied ? '已复制' : '复制代码'}</TooltipContent>
-                </Tooltip>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowCodePanel(false)}
-                  className="h-7 w-7 p-0"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-            {/* Code Editor */}
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <Editor
-                height="300px"
-                defaultLanguage="mermaid"
-                value={editedCode}
-                onChange={handleCodeChange}
-                theme="vs"
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 13,
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false,
-                  wordWrap: 'on',
-                  automaticLayout: true,
-                  tabSize: 2,
-                  padding: { top: 8, bottom: 8 },
-                  scrollbar: {
-                    verticalScrollbarSize: 8,
-                    horizontalScrollbarSize: 8,
-                  },
-                }}
-              />
-            </div>
-            {/* Panel Footer */}
-            <div className="flex items-center justify-end gap-2 border-t border-border px-3 py-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleResetCode}
-                    disabled={!hasChanges}
-                    className="gap-1.5"
-                  >
-                    <Undo2 className="h-3.5 w-3.5" />
-                    <span className="text-xs">重置</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>重置为原始代码</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleApplyCode}
-                    disabled={!hasChanges || !editedCode.trim()}
-                    className="gap-1.5"
-                  >
-                    <Play className="h-3.5 w-3.5" />
-                    <span className="text-xs">应用</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>应用代码更改</TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
+          <SourceCodePanel
+            code={code}
+            language="mermaid"
+            title="Mermaid 源码"
+            onApply={handleApplyCode}
+            onClose={() => setShowCodePanel(false)}
+          />
         )}
       </div>
     </TooltipProvider>

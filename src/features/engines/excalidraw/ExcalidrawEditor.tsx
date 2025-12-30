@@ -2,16 +2,9 @@ import { useState, useEffect, useRef, useMemo, useCallback, forwardRef, useImper
 import { Excalidraw, exportToBlob, exportToSvg, getSceneVersion, restoreElements, convertToExcalidrawElements } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
-import Editor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/Button'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/Tooltip'
-import { Code, X, Copy, Check, Play, Undo2 } from 'lucide-react'
+import { TooltipProvider } from '@/components/ui/Tooltip'
+import { SourceCodePanel } from '@/components/ui/SourceCodePanel'
 
 interface ExcalidrawEditorProps {
   data: string // JSON string
@@ -95,9 +88,6 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showCodePanel, setShowCodePanel] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [editedCode, setEditedCode] = useState(data)
-  const [hasChanges, setHasChanges] = useState(false)
 
   // Refs for tracking scene version and preventing loops
   const lastSceneVersionRef = useRef(0)
@@ -170,15 +160,6 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
     }
   }, [data])
 
-  // Sync editedCode when data prop changes (but only for external changes)
-  useEffect(() => {
-    // Only sync if this is an external change, not from user drawing
-    if (data !== initialDataPropRef.current) {
-      setEditedCode(data)
-      setHasChanges(false)
-    }
-  }, [data])
-
   // Update canvas when data prop changes from external source (e.g., AI generation, version restore)
   // This should NOT run when data changes due to user drawing
   useEffect(() => {
@@ -222,31 +203,12 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
     }
   }, [data, excalidrawAPI])
 
-  // Copy code handler
-  const handleCopyCode = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(editedCode)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch (err) {
-      console.error('Failed to copy code:', err)
-    }
-  }, [editedCode])
-
-  // Handle code edit (for Monaco Editor)
-  const handleCodeChange = useCallback((value: string | undefined) => {
-    const newCode = value || ''
-    setEditedCode(newCode)
-    setHasChanges(newCode !== data)
-  }, [data])
-
-  // Apply code changes - use updateScene API to update canvas
-  const handleApplyCode = useCallback(() => {
-    if (!editedCode.trim() || !excalidrawAPI) return
+  // Apply code changes from SourceCodePanel
+  const handleApplyCode = useCallback((newCode: string) => {
+    if (!newCode.trim() || !excalidrawAPI) return
 
     try {
-      const parsed = JSON.parse(editedCode)
-      // Support both array format and object format
+      const parsed = JSON.parse(newCode)
       const elementsData = Array.isArray(parsed) ? parsed : parsed.elements
 
       if (!Array.isArray(elementsData)) {
@@ -254,30 +216,18 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
         return
       }
 
-      // Prepare elements with proper binding handling
       const restoredElements = prepareExcalidrawElements(elementsData)
 
-      // Update scene using API with isLoading: false to prevent "loading scene" message
       excalidrawAPI.updateScene({
         elements: restoredElements,
         appState: { isLoading: false },
       })
 
-      // Notify parent of change
-      if (onChange) {
-        onChange(editedCode)
-      }
-      setHasChanges(false)
+      onChange?.(newCode)
     } catch (err) {
       console.error('Failed to apply code:', err)
     }
-  }, [editedCode, excalidrawAPI, onChange])
-
-  // Reset code to original
-  const handleResetCode = useCallback(() => {
-    setEditedCode(data)
-    setHasChanges(false)
-  }, [data])
+  }, [excalidrawAPI, onChange])
 
   // Export as SVG
   const exportAsSvg = useCallback(async () => {
@@ -478,101 +428,13 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
 
         {/* Code Panel */}
         {showCodePanel && (
-          <div className="absolute bottom-4 right-4 z-10 w-96 max-h-[70%] flex flex-col border border-border bg-surface shadow-lg">
-            {/* Panel Header */}
-            <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Excalidraw 源码</span>
-                {hasChanges && (
-                  <span className="text-xs text-amber-500">• 未保存</span>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleCopyCode}
-                      className="h-7 w-7 p-0"
-                    >
-                      {copied ? (
-                        <Check className="h-3.5 w-3.5 text-green-500" />
-                      ) : (
-                        <Copy className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{copied ? '已复制' : '复制代码'}</TooltipContent>
-                </Tooltip>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowCodePanel(false)}
-                  className="h-7 w-7 p-0"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-            {/* Code Editor */}
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <Editor
-                height="300px"
-                defaultLanguage="json"
-                value={editedCode}
-                onChange={handleCodeChange}
-                theme="vs"
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 13,
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false,
-                  wordWrap: 'on',
-                  automaticLayout: true,
-                  tabSize: 2,
-                  padding: { top: 8, bottom: 8 },
-                  scrollbar: {
-                    verticalScrollbarSize: 8,
-                    horizontalScrollbarSize: 8,
-                  },
-                }}
-              />
-            </div>
-            {/* Panel Footer */}
-            <div className="flex items-center justify-end gap-2 border-t border-border px-3 py-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleResetCode}
-                    disabled={!hasChanges}
-                    className="gap-1.5"
-                  >
-                    <Undo2 className="h-3.5 w-3.5" />
-                    <span className="text-xs">重置</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>重置为原始代码</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleApplyCode}
-                    disabled={!hasChanges || !editedCode.trim()}
-                    className="gap-1.5"
-                  >
-                    <Play className="h-3.5 w-3.5" />
-                    <span className="text-xs">应用</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>应用代码更改</TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
+          <SourceCodePanel
+            code={data}
+            language="json"
+            title="Excalidraw 源码"
+            onApply={handleApplyCode}
+            onClose={() => setShowCodePanel(false)}
+          />
         )}
       </div>
     </TooltipProvider>
