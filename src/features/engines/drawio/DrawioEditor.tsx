@@ -1,4 +1,4 @@
-import { useCallback, useImperativeHandle, useRef, useState, forwardRef } from 'react'
+import { useCallback, useImperativeHandle, useRef, useState, forwardRef, useEffect } from 'react'
 import { DrawIoEmbed } from 'react-drawio'
 import type { DrawIoEmbedRef, EventExport, EventSave, EventAutoSave } from 'react-drawio'
 import { cn } from '@/lib/utils'
@@ -36,6 +36,13 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     const drawioRef = useRef<DrawIoEmbedRef | null>(null)
     const [isReady, setIsReady] = useState(false)
     const [showCodePanel, setShowCodePanel] = useState(false)
+
+    // 跟踪初始 XML，只在首次加载时使用
+    const initialXmlRef = useRef<string>(data)
+    // 跟踪当前内容，用于 SourceCodePanel 显示
+    const currentContentRef = useRef<string>(data)
+    // 标记是否需要从外部加载新数据（区分内部编辑和外部加载）
+    const pendingExternalLoadRef = useRef<string | null>(null)
 
     // 使用 ref 来跟踪导出请求，避免状态更新的时序问题
     const saveResolverRef = useRef<{
@@ -208,30 +215,57 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     }, [])
 
     // Handle autosave event - 自动监听数值变化
+    // 只更新 ref 和通知父组件，不触发重新渲染
     const handleAutoSave = useCallback((data: EventAutoSave) => {
       if (data.xml) {
+        // 更新内部跟踪的当前内容
+        currentContentRef.current = data.xml
+        // 通知父组件内容变化，但不会导致 xml prop 变化触发 reload
         onChange?.(data.xml)
       }
     }, [onChange])
 
     // Apply code changes from SourceCodePanel
     const handleApplyCode = useCallback((newCode: string) => {
-      if (newCode.trim() && newCode !== data) {
+      if (newCode.trim() && newCode !== currentContentRef.current) {
         // Load the new XML into draw.io
         if (drawioRef.current) {
           drawioRef.current.load({ xml: newCode })
         }
+        // 更新内部跟踪
+        currentContentRef.current = newCode
         // Notify parent of change
         onChange?.(newCode)
       }
-    }, [data, onChange])
+    }, [onChange])
+
+    // 监听外部 data prop 变化（如 AI 生成新图）
+    // 只有当外部数据与当前内容不同时才加载
+    useEffect(() => {
+      // 跳过初始渲染
+      if (data === initialXmlRef.current) {
+        return
+      }
+      // 如果外部数据与当前内容相同，说明是 autosave 触发的更新，忽略
+      if (data === currentContentRef.current) {
+        return
+      }
+      // 外部数据变化，需要加载新内容
+      if (isReady && drawioRef.current) {
+        drawioRef.current.load({ xml: data })
+        currentContentRef.current = data
+      } else {
+        // 如果还没准备好，标记待加载
+        pendingExternalLoadRef.current = data
+      }
+    }, [data, isReady])
 
     return (
       <TooltipProvider>
         <div className={cn('relative h-full w-full', className)}>
           <DrawIoEmbed
             ref={drawioRef}
-            xml={data}
+            xml={initialXmlRef.current}
             baseUrl={DRAWIO_BASE_URL}
             onLoad={handleLoad}
             onAutoSave={handleAutoSave}
