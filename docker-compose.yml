@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  ai-draw-nexus:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-draw-nexus
+    ports:
+      - "8788:8788"  # Wrangler Pages Dev 主端口
+      - "5173:5173"  # Vite 开发服务器端口（可选）
+    environment:
+      # AI 配置 - 从 .env 文件加载
+      - AI_API_KEY=${AI_API_KEY}
+      - AI_BASE_URL=${AI_BASE_URL:-https://api.openai.com/v1}
+      - AI_PROVIDER=${AI_PROVIDER:-openai}
+      - AI_MODEL_ID=${AI_MODEL_ID:-gpt-4o-mini}
+      # Node 环境
+      - NODE_ENV=development
+    volumes:
+      # 挂载源代码以支持热重载
+      - .:/app
+      # 防止 node_modules 被主机覆盖
+      - /app/node_modules
+      - /app/.wrangler
+    restart: unless-stopped
