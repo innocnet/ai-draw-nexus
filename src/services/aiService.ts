@@ -37,10 +37,16 @@ function checkAndConsumeQuota(response: Response): void {
 
 /**
  * 检查是否有足够配额
- * 注意：总是检查配额，不管是否有密码或自定义 LLM 配置
- * 后端会通过 X-Quota-Exempt 响应头告知是否真正消耗配额
+ * 如果用户有访问密码或自定义 LLM 配置，允许发送请求（让后端验证）
+ * 只有在没有任何凭证时才检查配额，防止无凭证用户在配额用完后无限请求
+ * 结合 401 错误处理，可以防止密码错误时的暴力破解
  */
 function ensureQuotaAvailable(): void {
+  // 如果有访问密码或自定义 LLM 配置，允许发送请求（让后端验证）
+  if (quotaService.hasAccessPassword() || quotaService.hasLLMConfig()) {
+    return
+  }
+  // 只有在没有任何凭证时才检查配额
   if (!quotaService.hasQuotaRemaining()) {
     throw new Error('今日配额已用完，请设置访问密码或自定义 LLM 配置以继续使用')
   }
