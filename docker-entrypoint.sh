@@ -1,5 +1,15 @@
 #!/bin/sh
 
+# 创建 .dev.vars 文件，将 Docker 环境变量传递给 Wrangler
+echo "Creating .dev.vars from environment variables..."
+cat > /app/.dev.vars <<EOF
+AI_API_KEY=${AI_API_KEY}
+AI_BASE_URL=${AI_BASE_URL:-https://api.openai.com/v1}
+AI_PROVIDER=${AI_PROVIDER:-openai}
+AI_MODEL_ID=${AI_MODEL_ID:-gpt-4o-mini}
+ACCESS_PASSWORD=${ACCESS_PASSWORD}
+EOF
+
 # 启动 Vite 开发服务器（后台运行）
 echo "Starting Vite development server..."
 pnpm run dev:frontend &
