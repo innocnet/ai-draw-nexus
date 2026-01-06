@@ -15,6 +15,7 @@ services:
       - AI_BASE_URL=${AI_BASE_URL:-https://api.openai.com/v1}
       - AI_PROVIDER=${AI_PROVIDER:-openai}
       - AI_MODEL_ID=${AI_MODEL_ID:-gpt-4o-mini}
+      - ACCESS_PASSWORD=${ACCESS_PASSWORD}
       # Node 环境
       - NODE_ENV=development
     volumes:
