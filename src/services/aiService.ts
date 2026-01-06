@@ -36,13 +36,15 @@ function checkAndConsumeQuota(response: Response): void {
 }
 
 /**
- * 检查是否有足够配额
- * 注意：总是检查配额，不管是否有密码或自定义 LLM 配置
- * 后端会通过 X-Quota-Exempt 响应头告知是否真正消耗配额
+ * 检查是否有足够配额（有密码或自定义 LLM 配置时跳过检查）
  */
 function ensureQuotaAvailable(): void {
+  // 优先检查访问密码，其次检查 LLM 配置
+  if (quotaService.hasAccessPassword() || quotaService.hasLLMConfig()) {
+    return
+  }
   if (!quotaService.hasQuotaRemaining()) {
-    throw new Error('今日配额已用完，请设置访问密码或自定义 LLM 配置以继续使用')
+    throw new Error('今日配额已用完，请明天再试或设置访问密码/自定义 LLM 配置')
   }
 }
 
@@ -128,11 +130,6 @@ export const aiService = {
     })
 
     if (!response.ok) {
-      // 如果是 401 错误（访问密码错误），清除错误的凭证
-      if (response.status === 401) {
-        quotaService.clearAccessPassword()
-        throw new Error('访问密码错误，已清除本地密码，请重新设置')
-      }
       const error = await response.text()
       throw new Error(`AI request failed: ${error}`)
     }
@@ -164,11 +161,6 @@ export const aiService = {
     })
 
     if (!response.ok) {
-      // 如果是 401 错误（访问密码错误），清除错误的凭证
-      if (response.status === 401) {
-        quotaService.clearAccessPassword()
-        throw new Error('访问密码错误，已清除本地密码，请重新设置')
-      }
       const error = await response.text()
       throw new Error(`AI request failed: ${error}`)
     }
